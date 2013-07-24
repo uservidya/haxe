@@ -661,7 +661,16 @@ let get_constructor ctx c params p =
 		let ct = field_type ctx c params f p in
 		apply_params a.a_types params ct, f
 	| _ ->
-		let ct, f = (try Type.get_constructor (fun f -> field_type ctx c params f p) c with Not_found -> error (s_type_path c.cl_path ^ " does not have a constructor") p) in
+		let get () = Type.get_constructor (fun f -> field_type ctx c params f p) c in
+		let ct,f = try
+			get()
+		with Not_found -> try
+			(* flush class building pass in case it was not done yet (issue #2010) *)
+			flush_pass ctx PBuildClass "get_constructor";
+			get()
+		with Not_found ->
+			error (s_type_path c.cl_path ^ " does not have a constructor") p
+		in
 		apply_params c.cl_types params ct, f
 
 let make_call ctx e params t p =
