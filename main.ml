@@ -1324,6 +1324,8 @@ with
 		end
 	| Typecore.Error (m,p) ->
 		error ctx (Typecore.error_msg m) p
+	| Codegen.Generic_Exception(m,p) ->
+		error ctx m p
 	| Interp.Error (msg,p :: l) ->
 		message ctx msg p;
 		List.iter (message ctx "Called from") l;

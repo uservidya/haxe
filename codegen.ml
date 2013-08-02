@@ -296,7 +296,7 @@ let rec build_generic ctx c p tl =
 			()
 	in
 	List.iter check_recursive tl;
-	let gctx = try make_generic ctx c.cl_types tl p with Generic_Exception (msg,p) -> error msg p in
+	let gctx = make_generic ctx c.cl_types tl p in
 	let name = (snd c.cl_path) ^ "_" ^ gctx.name in
 	if !recurse then begin
 		TInst (c,tl) (* build a normal instance *)

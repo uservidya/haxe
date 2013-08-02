@@ -2613,7 +2613,7 @@ and type_expr ctx (e,p) (with_type:with_type) =
 				wrap (Codegen.PatternMatchConversion.to_typed_ast ctx dt p)
 		with Exit ->
 			type_switch_old ctx e1 cases def with_type p
-		end	
+		end
 	| EReturn e ->
 		let e , t = (match e with
 			| None ->
@@ -2675,10 +2675,10 @@ and type_expr ctx (e,p) (with_type:with_type) =
 			let restore = fun () ->
 				ctx.m.module_types <- List.tl ctx.m.module_types;
 				ctx.on_error <- old;
-			in	
+			in
 			ctx.on_error <- (fun ctx msg ep ->
 				raise Not_found;
-			);			
+			);
 			begin try
 				let e = type_call ctx e el with_type p in
 				restore();
@@ -2697,8 +2697,30 @@ and type_expr ctx (e,p) (with_type:with_type) =
 	| ECall (e,el) ->
 		type_call ctx e el with_type p
 	| ENew (t,el) ->
-		let t = Typeload.load_instance ctx t p true in
-		let ct = (match follow t with
+		let unify_ctor_call c params f ct =
+			match follow ct with
+			| TFun (args,r) ->
+				(try
+					fst (unify_call_params ctx (Some (TInst(c,params),f)) el args r p false)
+				with Error (e,p) ->
+					display_error ctx (error_msg e) p;
+					[])
+			| _ ->
+				error "Constructor is not a function" p
+		in
+		let t = try
+			follow (Typeload.load_instance ctx t p true)
+		with Codegen.Generic_Exception _ ->
+			match Typeload.load_type_def ctx p t with
+			| TClassDecl ({cl_constructor = Some cf} as c) ->
+				(* try to infer generic parameters from the argument list (issue #2044) *)
+				let monos = List.map (fun _ -> mk_mono()) c.cl_types in
+				let ct, f = get_constructor ctx c monos p in
+				ignore (unify_ctor_call c monos f ct);
+				Codegen.build_generic ctx c p monos
+			| mt -> error ((s_type_path (t_infos mt).mt_path) ^ " cannot be constructed") p
+		in
+		let ct = (match t with
 			| TAbstract (a,pl) ->
 				(match a.a_impl with
 				| None -> t
@@ -2726,16 +2748,7 @@ and type_expr ctx (e,p) (with_type:with_type) =
 			(match f.cf_kind with
 			| Var { v_read = AccRequire (r,msg) } -> (match msg with Some msg -> error msg p | None -> error_require r p)
 			| _ -> ());
-			let el = (match follow ct with
-			| TFun (args,r) ->
-				(try
-					fst (unify_call_params ctx (Some (TInst(c,params),f)) el args r p false)
-				with Error (e,p) ->
-					display_error ctx (error_msg e) p;
-					[])
-			| _ ->
-				error "Constructor is not a function" p
-			) in
+			let el = unify_ctor_call c params f ct in
 			(match c.cl_kind with
 			| KAbstractImpl a when not (Meta.has Meta.MultiType a.a_meta) ->
 				let ta = TAnon { a_fields = c.cl_statics; a_status = ref (Statics c) } in
@@ -3146,7 +3159,7 @@ and build_call ctx e acc el (with_type:with_type) p =
 					| _ -> assert false
 					end
 				| _ -> assert false
-			in		
+			in
 			make_call ctx et (eparam :: params) r p
 		end
 	| AKMacro (ethis,f) ->
