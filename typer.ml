@@ -1939,6 +1939,14 @@ and type_ident ctx i p mode =
 		if is_lower_ident i then raise Not_found;
 		let e = (try type_type ctx ([],i) p with Error (Module_not_found ([],name),_) when name = i -> raise Not_found) in
 		AKExpr e
+	with Not_found -> try
+		(* check for generic type parameter (issue #2038) *)
+		let c = match List.assoc i ctx.curfield.cf_params with
+			| TInst(c,_) -> c
+			| _ -> raise Not_found
+		in
+		if not (Meta.has Meta.Generic ctx.curfield.cf_meta) then raise Not_found;
+		AKExpr (type_module_type ctx (TClassDecl c) None p)
 	with Not_found ->
 		if ctx.untyped then begin
 			if i = "__this__" then

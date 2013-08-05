@@ -242,6 +242,12 @@ let make_generic ctx ps pt p =
 		mg = None;
 	}
 
+let rec find_subst_class subst cs =
+	match subst with
+	| (TInst(c,[]),t) :: subst when c == cs -> t
+	| _ :: subst -> find_subst_class subst cs
+	| [] -> raise Not_found
+
 let rec generic_substitute_type gctx t =
 	match t with
 	| TInst ({ cl_kind = KGeneric } as c2,tl2) ->
@@ -267,6 +273,17 @@ let generic_substitute_expr gctx e =
 		match e.eexpr with
 		| TField(e1, FInstance({cl_kind = KGeneric},cf)) ->
 			build_expr {e with eexpr = TField(e1,quick_field_dynamic (generic_substitute_type gctx (e1.etype)) cf.cf_name)}
+		| TTypeExpr (TClassDecl c) ->
+			begin try
+				let ta = TAnon { a_fields = c.cl_statics; a_status = ref (Statics c) } in
+				begin match follow (find_subst_class gctx.subst c) with
+					| TInst(c,_) ->
+						mk (TTypeExpr (TClassDecl c)) ta e.epos
+					| _ -> raise Not_found
+				end
+			with Not_found ->
+				{ e with etype = generic_substitute_type gctx e.etype }
+			end
 		| _ -> map_expr_type build_expr (generic_substitute_type gctx) build_var e
 	in
 	build_expr e
@@ -363,14 +380,9 @@ let rec build_generic ctx c p tl =
 			| None -> None
 			| Some (cs,pl) ->
 				let find_class subst =
-					let rec loop subst = match subst with
-						| (TInst(c,[]),t) :: subst when c == cs -> t
-						| _ :: subst -> loop subst
-						| [] -> raise Not_found
-					in
 					try
 						if pl <> [] then raise Not_found;
-						let t = loop subst in
+						let t = find_subst_class subst cs in
 						(* extended type parameter: concrete type must have a constructor, but generic base class must not have one *)
  						begin match follow t,c.cl_constructor with
 							| TInst({cl_constructor = None} as cs,_),None -> error ("Cannot use " ^ (s_type_path cs.cl_path) ^ " as type parameter because it is extended and has no constructor") p
