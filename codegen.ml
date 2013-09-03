@@ -545,38 +545,36 @@ let build_macro_type ctx pl p =
 (* -------------------------------------------------------------------------- *)
 (* API EVENTS *)
 
-let build_instance ctx mtype p =
+let rec build_instance ctx mtype p =
+	let build f n =
+		let r = exc_protect ctx (fun r ->
+			let t = mk_mono() in
+			r := (fun() -> t);
+			unify_raise ctx (f()) t p;
+			t
+		) n in
+		delay ctx PForce (fun() -> ignore ((!r)()));
+		TLazy r
+	in
 	match mtype with
 	| TClassDecl c ->
 		if ctx.pass > PBuildClass then c.cl_build();
-		let ft = (fun pl ->
+		let ft = (fun tl ->
 			match c.cl_kind with
 			| KGeneric ->
-				let r = exc_protect ctx (fun r ->
-					let t = mk_mono() in
-					r := (fun() -> t);
-					unify_raise ctx (build_generic ctx c p pl) t p;
-					t
-				) "build_generic" in
-				delay ctx PForce (fun() -> ignore ((!r)()));
-				TLazy r
+				build (fun () -> build_generic ctx c p tl) "build_generic"
 			| KMacroType ->
-				let r = exc_protect ctx (fun r ->
-					let t = mk_mono() in
-					r := (fun() -> t);
-					unify_raise ctx (build_macro_type ctx pl p) t p;
-					t
-				) "macro_type" in
-				delay ctx PForce (fun() -> ignore ((!r)()));
-				TLazy r
+				build (fun () -> build_macro_type ctx tl p) "macro_type"
 			| _ ->
-				TInst (c,pl)
+				TInst (c,tl)
 		) in
 		c.cl_types , c.cl_path , ft
 	| TEnumDecl e ->
-		e.e_types , e.e_path , (fun t -> TEnum (e,t))
+		e.e_types , e.e_path , (fun tl -> TEnum (e,tl))
 	| TTypeDecl t ->
-		t.t_types , t.t_path , (fun tl -> TType(t,tl))
+		t.t_types , t.t_path , (fun tl -> match follow t.t_type with
+			| TInst({cl_kind = KGeneric} as c,_) -> build (fun () -> build_generic ctx c p tl) "build_generic"
+			| _ -> TType(t,tl))
 	| TAbstractDecl a ->
 		a.a_types, a.a_path, (fun tl -> TAbstract(a,tl))
 
