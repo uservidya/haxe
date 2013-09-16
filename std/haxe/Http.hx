@@ -104,11 +104,18 @@ class Http {
 
 		If `header` or `value` are null, the result is unspecified.
 
-		Multiple headers with the same name may exist.
+		If a header named `header` exists, its value is overwritten with
+		`value`.
 		
 		This method provides a fluent interface.
 	**/
 	public function setHeader( header : String, value : String ):Http {
+		for (h in headers) {
+			if (h.header == header) {
+				h.value = value;
+				return this;
+			}
+		}
 		headers.push({ header:header, value:value });
 		return this;
 	}
@@ -118,11 +125,18 @@ class Http {
 
 		If `param` or `value` are null, the result is unspecified.
 
-		Multiple parameters with the same name may exist.
+		If a parameter named `param` exists, its value is overwritten with
+		`value`.
 		
 		This method provides a fluent interface.
 	**/
 	public function setParameter( param : String, value : String ):Http {
+		for (p in params) {
+			if (p.param == param) {
+				p.value = value;
+				return this;
+			}
+		}
 		params.push({ param:param, value:value });
 		return this;
 	}
